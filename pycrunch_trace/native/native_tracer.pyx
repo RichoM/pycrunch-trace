@@ -1,5 +1,6 @@
 import time
 import collections
+from enum import Enum
 
 from pycrunch_trace.client.networking.commands import EventsSlice, FileContentSlice, StopCommand
 from pycrunch_trace.file_system.trace_session import TraceSession
@@ -9,6 +10,41 @@ from pycrunch_trace.native.native_models cimport NativeCodeEvent, NativeExecutio
 allowed_types = [int, str, float, dict, type(None), bool]
 # allowed_types = [int, str, float,  type(None), bool]
 
+def to_json_dict(obj):
+    if obj is None: return obj
+    if isinstance(obj, str): return obj
+    if isinstance(obj, int): return obj
+    if isinstance(obj, bool): return obj
+    if isinstance(obj, float): return obj
+    if isinstance(obj, Enum): return obj.value
+    if isinstance(obj, tuple):
+        return to_json_dict(list(obj))
+    if isinstance(obj, set):
+        return to_json_dict(list(obj))
+
+    if isinstance(obj, list):
+        result = []
+        for e in obj:
+            result.append(to_json_dict(e))
+        return result
+    
+    if isinstance(obj, dict):
+        result = {}
+        for key in obj:
+            if isinstance(key, str) or isinstance(key, int) or isinstance(key, bool):
+                result[key] = to_json_dict(obj[key])
+            else:
+                result[str(key)] = to_json_dict(obj[key])
+        return result
+    
+    if hasattr(obj, "__dict__"):    
+        d = {}
+        for k, v in obj.__dict__.items():
+            if not k.startswith("_"):
+                d[k] = v
+        return to_json_dict(d)
+
+    return str(obj)
 
 cdef class NativeCallStack:
     cdef object stack
@@ -264,12 +300,12 @@ cdef class NativeTracer:
         self.flush_queue_if_full()
 
     cdef str ensure_safe_for_serialization(self, value):
-        current_type = type(value)
-        if current_type not in allowed_types:
-            return str(current_type)
+        #current_type = type(value)
+        #if current_type not in allowed_types:
+        #    return str(current_type)
         # return 'a'
         # todo is this slowdown?
-        return str(value)
+        return str(to_json_dict(value))
 
     cdef push_traceable_variables(self, frame, NativeVariables locals):
         cdef NativeVariable current
